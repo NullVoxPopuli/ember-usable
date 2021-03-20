@@ -14,7 +14,7 @@ function normalizeArgs(args) {
   }
 
   if (typeof args === 'object') {
-    return { named: args }
+    return { named: args };
   }
 
   return args;
@@ -42,6 +42,45 @@ export function use(prototype, key, desc) {
       }
 
       return getValue(resource);
+    },
+  };
+}
+
+export function useUnproxiedResource(destroyable, definition, args) {
+  let resource;
+
+  return {
+    get value() {
+      if (!resource) {
+        resource = invokeHelper(
+          destroyable,
+          definition,
+          () => {
+            return normalizeArgs(args?.() || {});
+          }
+        );
+      }
+
+      return getValue(resource);
     }
-  }
+  };
+}
+
+export function useResource(destroyable, definition, args) {
+  const target = useUnproxiedResource(destroyable, definition, args);
+
+  return (new Proxy(target, {
+    get(target, key) {
+      const instance = target.value;
+      const value = Reflect.get(instance, key, instance);
+
+      return typeof value === 'function' ? value.bind(instance) : value;
+    },
+    ownKeys(target) {
+      return Reflect.ownKeys(target.value);
+    },
+    getOwnPropertyDescriptor(target, key) {
+      return Reflect.getOwnPropertyDescriptor(target.value, key);
+    }
+  }))
 }
